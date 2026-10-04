@@ -1,0 +1,40 @@
+**Working Paper: Praktik 2 Sesi 3**
+
+Kasus Aplikasi Pemesanan Katering Dapur Nia
+
+**Identitas**
+
+| Keterangan | Isian |
+| :---- | :---- |
+| Nama peserta | Jihan |
+| Tanggal | 4 Oktober 2026 |
+| Sesi | Sesi 3 (Praktik 2) |
+| Nama proyek Antigravity | App 2 Dapur Nia (dapur-nia) |
+| Nama proyek Firebase | bootcamp-aca14 |
+| Nama pasangan | Peer Reviewer / Pasangan Praktik Sesi 3 |
+| URL pasangan | https://dapur-nia-jihan.netlify.app |
+
+**A. Koneksi dan Koleksi Firestore**
+
+| No | Koleksi | Dokumen awal | Read | Create | Catatan |
+| :---- | :---- | :---- | :---- | :---- | :---- |
+| 1 | `menus` | 4 dokumen (`Paket Nasi Ayam Bakar Madu`, `Paket Nasi Liwet Komplit`, `Sayur Asem Khas Sunda`, `Es Teh Manis Melati`) | \[x\] | \[x\] | Menyimpan data menu katering, harga, kategori, deskripsi, gambar, ketersediaan, dan sisa kuota porsi harian (`remainingPortions`). Terkoneksi ke Firebase `bootcamp-aca14`. |
+| 2 | `customers` | 2 dokumen (`Budi Santoso`, `Siti Rahma`) | \[x\] | \[x\] | Menyimpan profil pelanggan, alamat pengiriman, catatan alamat, dan nomor WhatsApp yang tervalidasi unik untuk mencegah duplikasi data pelanggan. |
+| 3 | `orders` | Dokumen transaksi pesanan katering (dibuat via form pesanan baru) | \[x\] | \[x\] | Menyimpan riwayat pesanan dengan snapshot item (`menuId`, `menuName`, `priceAtOrder`, `qty`, `subtotal`), subtotal, ongkir, total bayar, tanggal, dan status pesanan. |
+
+**B. Pemeriksaan CRUD**
+
+| Operasi | Data atau dokumen | Hasil UI | Sudah |
+| :---- | :---- | :---- | :---- |
+| Create | Penambahan menu baru (contoh: *Soto Ayam Ambengan*, Rp22.000, 10 porsi), pelanggan baru (*Ahmad Fauzi*, WA 081299887766), dan pembuatan pesanan baru. | Formulir dialog responsif dengan validasi input lengkap; data baru langsung tersimpan ke Firestore dan muncul secara instan di daftar kartu; stok porsi menu otomatis terpotong (*anti-overselling*). | \[x\] |
+| Read | Menampilkan daftar menu katering, daftar pelanggan, daftar riwayat pesanan, serta agregasi laporan penjualan harian berdasarkan tanggal. | Data termuat secara reaktif dari Firestore; dilengkapi *skeleton loading shimmer*, format mata uang Rupiah (`Rp`), format tanggal lokal Indonesia, dan *empty state* yang informatif. | \[x\] |
+| Update | Pengubahan informasi menu (nama/harga/sisa porsi), pembaruan profil pelanggan (nama/WA/alamat), dan transisi status tahapan pesanan. | Modal formulir terisi data awal (*pre-filled*); perubahan tersimpan ke Firestore; status pesanan bertransisi linier 1 arah sesuai alur operasional dapur katering. | \[x\] |
+| Delete | Penghapusan data menu, penghapusan data pelanggan, dan pembatalan pesanan (*status: dibatalkan*). | Dialog konfirmasi mencegah penghapusan data tidak sengaja; data terhapus dari daftar kartu; pembatalan pesanan otomatis memicu *stock rollback* untuk mengembalikan porsi katering ke menu terkait. | \[x\] |
+
+**C. Tiga Invariant**
+
+| No | Invariant | Akibat bila dilanggar | Ditegakkan pada | Hasil uji |
+| :---- | :---- | :---- | :---- | :---- |
+| 1 | **Integritas Finansial & Stok Non-Negatif**<br>`price >= 0`, `remainingPortions >= 0`, `shippingFee >= 0`, `totalAmount >= 0` (Total = Subtotal + Ongkir). | Total tagihan atau pendapatan pada laporan harian bernilai negatif/tidak masuk akal, serta sisa porsi katering menjadi minus yang merusak data kapasitas dapur. | Formulir Input UI (`menu-dialog.tsx`, `order-dialog.tsx`), Service Handler (`lib/firestore-service.ts`), dan Security Rules Firestore. | Lolos uji tembus input negatif: masukan harga negatif (misal `-15000`) atau ongkir negatif langsung ditolak sistem dengan notifikasi galat yang jelas, data tidak tersimpan. |
+| 2 | **Validasi Kuantitas Porsi Sah & Snapshot Harga (Anti-Overselling)**<br>`qty > 0`, `qty <= remainingPortions`, dan harga item pesanan dikunci permanen saat transaksi dibuat (*price snapshot*). | Pesanan 0 porsi tersimpan mengotori laporan, pesanan melebihi kapasitas katering (*overselling*), serta perubahan harga menu di masa depan merusak riwayat transaksi lampau. | Logika `createOrder` di `lib/firestore-service.ts`, seleksi porsi di Dialog Pesanan (`order-dialog.tsx`), dan Security Rules Firestore. | Lolos uji tembus porsi tidak sah: kuantitas 0 dinonaktifkan, pesanan melebihi sisa porsi ditolak dengan peringatan ketersediaan kuota, porsi otomatis terpotong saat pesanan berhasil disimpan. |
+| 3 | **Finite State Machine Transisi Status Linier 1 Arah & Stock Rollback**<br>Alur status: `menunggu_pembayaran` → `dikonfirmasi` → `diproses` → `dikirim` → `selesai` (atau `dibatalkan`). Status tidak boleh melompat atau mundur; pembatalan memicu *rollback* porsi. | Alur operasional katering kacau (misal pesanan belum bayar langsung dianggap selesai), data laporan tidak konsisten, dan kuota porsi hilang/hangus tanpa ada pesanan sah. | Matriks `VALID_TRANSITIONS` & fungsi `updateOrderStatus` di `lib/firestore-service.ts`, serta navigasi tombol aksi status di UI kartu pesanan (`order-card.tsx`). | Lolos uji transisi ilegal: upaya melompati tahapan status (misal dari `menunggu_pembayaran` langsung ke `selesai`) ditolak sistem; pembatalan pesanan sukses mengembalikan kuota porsi ke menu terkait. |
