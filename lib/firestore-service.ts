@@ -88,7 +88,6 @@ function getLocalData<T>(key: string, initial: T): T {
   }
 }
 
-
 // Helper to remove undefined fields which Firestore rejects
 function cleanPayload<T extends Record<string, any>>(obj: T): any {
   const result: any = {};
@@ -104,7 +103,7 @@ function cleanPayload<T extends Record<string, any>>(obj: T): any {
   return result;
 }
 
-async function withTimeout<T>(promise: Promise<T>, ms = 10000): Promise<T> {
+async function withTimeout<T>(promise: Promise<T>, ms = 4000): Promise<T> {
   let timer: any;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timer = setTimeout(() => reject(new Error("FIRESTORE_TIMEOUT")), ms);
@@ -128,13 +127,36 @@ function setLocalData<T>(key: string, data: T): void {
 export async function getMenus(): Promise<MenuItem[]> {
   if (isFirebaseConfigured && db) {
     try {
-      const q = query(collection(db, "menus"), orderBy("name", "asc"));
-      const snap = await withTimeout(getDocs(q));
-      if (!snap.empty) {
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as MenuItem));
+      let snap;
+      try {
+        const q = query(collection(db, "menus"), orderBy("name", "asc"));
+        snap = await withTimeout(getDocs(q), 3500);
+      } catch {
+        snap = await withTimeout(getDocs(collection(db, "menus")), 3500);
       }
-    } catch (e) {
-      console.warn("Firestore fetch menus failed or timed out, fallback to local:", e);
+
+      if (snap && !snap.empty) {
+        const remoteMenus = snap.docs.map(d => {
+          const data = d.data();
+          return {
+            id: d.id,
+            name: data.name || "",
+            price: Number(data.price) || 0,
+            remainingPortions: Number(data.remainingPortions) || 0,
+            category: data.category || "Umum",
+            description: data.description || "",
+            imageUrl: data.imageUrl || "",
+            isAvailable: data.isAvailable !== undefined ? Boolean(data.isAvailable) : (Number(data.remainingPortions) > 0),
+            createdAt: data.createdAt?.toDate ? data.createdAt.toDate().toISOString() : data.createdAt,
+            updatedAt: data.updatedAt?.toDate ? data.updatedAt.toDate().toISOString() : data.updatedAt,
+          } as MenuItem;
+        }).sort((a, b) => a.name.localeCompare(b.name));
+
+        setLocalData(STORAGE_KEY_MENUS, remoteMenus);
+        return remoteMenus;
+      }
+    } catch (e: any) {
+      console.warn("Firestore fetch menus timed out / offline, using local cache:", e);
     }
   }
 
@@ -153,8 +175,7 @@ export async function addMenu(data: Omit<MenuItem, "id">): Promise<MenuItem> {
   if (data.remainingPortions < 0) throw new Error("Sisa porsi tidak boleh kurang dari 0");
   if (!data.name || data.name.trim() === "") throw new Error("Nama menu wajib diisi");
 
-  const newItemData: Omit<MenuItem, "id"> = {
-    ...data,
+  const newItemData = {
     name: data.name.trim(),
     price: Number(data.price),
     imageUrl: data.imageUrl || "",
@@ -162,6 +183,12 @@ export async function addMenu(data: Omit<MenuItem, "id">): Promise<MenuItem> {
     category: data.category || "Umum",
     remainingPortions: Number(data.remainingPortions),
     isAvailable: Number(data.remainingPortions) > 0,
+  };
+
+  const list = await getMenus();
+  let created: MenuItem = {
+    id: `menu-${Date.now()}`,
+    ...newItemData,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -173,19 +200,15 @@ export async function addMenu(data: Omit<MenuItem, "id">): Promise<MenuItem> {
           ...newItemData,
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
-        }))
+        })),
+        4000
       );
-      return { id: ref.id, ...newItemData };
-    } catch (e) {
-      console.warn("Firestore addMenu timed out or failed, using local storage fallback:", e);
+      created.id = ref.id;
+    } catch (e: any) {
+      console.warn("Firestore addMenu offline, saved locally:", e);
     }
   }
 
-  const list = await getMenus();
-  const created: MenuItem = {
-    id: `menu-${Date.now()}`,
-    ...newItemData
-  };
   setLocalData(STORAGE_KEY_MENUS, [created, ...list]);
   return created;
 }
@@ -198,31 +221,33 @@ export async function updateMenu(id: string, data: Partial<MenuItem>): Promise<v
     throw new Error("Sisa porsi tidak boleh kurang dari 0");
   }
 
-  const updates: any = {
-    ...data,
-    updatedAt: new Date().toISOString()
-  };
+  const updates: any = { ...data };
+  if (data.name !== undefined) updates.name = data.name.trim();
+  if (data.price !== undefined) updates.price = Number(data.price);
   if (data.remainingPortions !== undefined) {
-    updates.isAvailable = data.remainingPortions > 0;
+    updates.remainingPortions = Number(data.remainingPortions);
+    updates.isAvailable = Number(data.remainingPortions) > 0;
   }
 
   if (isFirebaseConfigured && db) {
     try {
       const ref = doc(db, "menus", id);
-      await updateDoc(ref, cleanPayload({
-        ...updates,
-        updatedAt: serverTimestamp()
-      }));
-      return;
-    } catch (e) {
-      console.warn("Firestore updateMenu failed, using local:", e);
+      await withTimeout(
+        updateDoc(ref, cleanPayload({
+          ...updates,
+          updatedAt: serverTimestamp()
+        })),
+        4000
+      );
+    } catch (e: any) {
+      console.warn("Firestore updateMenu offline, updated locally:", e);
     }
   }
 
   const list = await getMenus();
   const index = list.findIndex(m => m.id === id);
   if (index !== -1) {
-    list[index] = { ...list[index], ...updates };
+    list[index] = { ...list[index], ...updates, updatedAt: new Date().toISOString() };
     setLocalData(STORAGE_KEY_MENUS, list);
   }
 }
@@ -230,10 +255,9 @@ export async function updateMenu(id: string, data: Partial<MenuItem>): Promise<v
 export async function deleteMenu(id: string): Promise<void> {
   if (isFirebaseConfigured && db) {
     try {
-      await deleteDoc(doc(db, "menus", id));
-      return;
-    } catch (e) {
-      console.warn("Firestore deleteMenu failed, using local:", e);
+      await withTimeout(deleteDoc(doc(db, "menus", id)), 4000);
+    } catch (e: any) {
+      console.warn("Firestore deleteMenu offline, removed locally:", e);
     }
   }
 
@@ -249,12 +273,14 @@ export async function getCustomers(): Promise<Customer[]> {
   if (isFirebaseConfigured && db) {
     try {
       const q = query(collection(db, "customers"), orderBy("name", "asc"));
-      const snap = await getDocs(q);
+      const snap = await withTimeout(getDocs(q), 3500);
       if (!snap.empty) {
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer));
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Customer));
+        setLocalData(STORAGE_KEY_CUSTOMERS, list);
+        return list;
       }
     } catch (e) {
-      console.warn("Firestore fetch customers failed, using local:", e);
+      console.warn("Firestore fetch customers failed, using local cache:", e);
     }
   }
 
@@ -288,22 +314,26 @@ export async function addCustomer(data: Omit<Customer, "id">): Promise<Customer>
     createdAt: new Date().toISOString()
   };
 
+  let created: Customer = {
+    id: `cust-${Date.now()}`,
+    ...newCustData
+  };
+
   if (isFirebaseConfigured && db) {
     try {
-      const ref = await addDoc(collection(db, "customers"), cleanPayload({
-        ...newCustData,
-        createdAt: serverTimestamp()
-      }));
-      return { id: ref.id, ...newCustData };
+      const ref = await withTimeout(
+        addDoc(collection(db, "customers"), cleanPayload({
+          ...newCustData,
+          createdAt: serverTimestamp()
+        })),
+        4000
+      );
+      created.id = ref.id;
     } catch (e) {
       console.warn("Firestore addCustomer failed, using local:", e);
     }
   }
 
-  const created: Customer = {
-    id: `cust-${Date.now()}`,
-    ...newCustData
-  };
   setLocalData(STORAGE_KEY_CUSTOMERS, [created, ...existingList]);
   return created;
 }
@@ -321,8 +351,7 @@ export async function updateCustomer(id: string, data: Partial<Customer>): Promi
 
   if (isFirebaseConfigured && db) {
     try {
-      await updateDoc(doc(db, "customers", id), cleanPayload(data));
-      return;
+      await withTimeout(updateDoc(doc(db, "customers", id), cleanPayload(data)), 4000);
     } catch (e) {
       console.warn("Firestore updateCustomer failed, using local:", e);
     }
@@ -339,8 +368,7 @@ export async function updateCustomer(id: string, data: Partial<Customer>): Promi
 export async function deleteCustomer(id: string): Promise<void> {
   if (isFirebaseConfigured && db) {
     try {
-      await deleteDoc(doc(db, "customers", id));
-      return;
+      await withTimeout(deleteDoc(doc(db, "customers", id)), 4000);
     } catch (e) {
       console.warn("Firestore deleteCustomer failed, using local:", e);
     }
@@ -358,12 +386,14 @@ export async function getOrders(): Promise<Order[]> {
   if (isFirebaseConfigured && db) {
     try {
       const q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
-      const snap = await getDocs(q);
+      const snap = await withTimeout(getDocs(q), 3500);
       if (!snap.empty) {
-        return snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
+        const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as Order));
+        setLocalData(STORAGE_KEY_ORDERS, list);
+        return list;
       }
     } catch (e) {
-      console.warn("Firestore fetch orders failed, using local:", e);
+      console.warn("Firestore fetch orders failed, using local cache:", e);
     }
   }
 
@@ -456,11 +486,14 @@ export async function createOrder(payload: {
 
   if (isFirebaseConfigured && db) {
     try {
-      const ref = await addDoc(collection(db, "orders"), cleanPayload({
-        ...newOrder,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      }));
+      const ref = await withTimeout(
+        addDoc(collection(db, "orders"), cleanPayload({
+          ...newOrder,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        })),
+        4000
+      );
       newOrder.id = ref.id;
     } catch (e) {
       console.warn("Firestore createOrder failed, saved locally:", e);
@@ -512,11 +545,13 @@ export async function updateOrderStatus(orderId: string, nextStatus: OrderStatus
 
   if (isFirebaseConfigured && db) {
     try {
-      await updateDoc(doc(db, "orders", orderId), {
-        status: nextStatus,
-        updatedAt: serverTimestamp()
-      });
-      return;
+      await withTimeout(
+        updateDoc(doc(db, "orders", orderId), {
+          status: nextStatus,
+          updatedAt: serverTimestamp()
+        }),
+        4000
+      );
     } catch (e) {
       console.warn("Firestore updateOrderStatus failed, using local:", e);
     }
@@ -587,8 +622,7 @@ export async function resetAllDataToDemo(): Promise<void> {
 
   if (isFirebaseConfigured && db) {
     try {
-      // Hapus menu lama di Firestore & isi ulang dengan initial menus
-      const snap = await getDocs(collection(db, "menus"));
+      const snap = await withTimeout(getDocs(collection(db, "menus")), 3000);
       for (const d of snap.docs) {
         await deleteDoc(d.ref);
       }

@@ -1,9 +1,9 @@
 "use client";
 
 import React from "react";
-import { UtensilsCrossed, ShoppingBag, Users, BarChart3 } from "lucide-react";
+import { UtensilsCrossed, Settings, ShoppingBag, Users, BarChart3, ChefHat } from "lucide-react";
 
-export type NavTab = "menu" | "orders" | "customers" | "reports";
+export type NavTab = "menu" | "manage" | "orders" | "customers" | "reports" | "login" | "register";
 
 interface BottomNavProps {
   activeTab: NavTab;
@@ -14,6 +14,7 @@ interface BottomNavProps {
 export function BottomNav({ activeTab, onTabChange, orderCount = 0 }: BottomNavProps) {
   const tabs = [
     { id: "menu" as NavTab, label: "Menu", icon: UtensilsCrossed },
+    { id: "manage" as NavTab, label: "Kelola", icon: ChefHat },
     { id: "orders" as NavTab, label: "Pesanan", icon: ShoppingBag, badge: orderCount },
     { id: "customers" as NavTab, label: "Pelanggan", icon: Users },
     { id: "reports" as NavTab, label: "Laporan", icon: BarChart3 },

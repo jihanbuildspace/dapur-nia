@@ -3,19 +3,26 @@
 import React from "react";
 import { MenuItem } from "@/lib/types";
 import { formatRupiah } from "@/lib/utils";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Edit2, Trash2, Plus, Minus, AlertCircle, CheckCircle2 } from "lucide-react";
 
 interface MenuCardProps {
   menu: MenuItem;
-  onEdit: (menu: MenuItem) => void;
-  onDelete: (id: string) => void;
-  onUpdatePortion: (id: string, newPortion: number) => void;
+  isOwner?: boolean;
+  onEdit?: (menu: MenuItem) => void;
+  onDelete?: (id: string) => void;
+  onUpdatePortion?: (id: string, newPortion: number) => void;
 }
 
-export function MenuCard({ menu, onEdit, onDelete, onUpdatePortion }: MenuCardProps) {
+export function MenuCard({
+  menu,
+  isOwner = true,
+  onEdit,
+  onDelete,
+  onUpdatePortion,
+}: MenuCardProps) {
   const isOutOfStock = menu.remainingPortions <= 0;
   const isLowStock = menu.remainingPortions > 0 && menu.remainingPortions <= 3;
 
@@ -54,24 +61,28 @@ export function MenuCard({ menu, onEdit, onDelete, onUpdatePortion }: MenuCardPr
               <h3 className="text-sm font-semibold leading-tight text-foreground line-clamp-1">
                 {menu.name}
               </h3>
-              <div className="flex items-center gap-1 shrink-0">
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => onEdit(menu)}
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground"
-                >
-                  <Edit2 className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-xs"
-                  onClick={() => onDelete(menu.id)}
-                  className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
+              {isOwner && onEdit && onDelete && (
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onEdit(menu)}
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    title="Ubah Menu"
+                  >
+                    <Edit2 className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    onClick={() => onDelete(menu.id)}
+                    className="h-7 w-7 text-muted-foreground hover:text-destructive"
+                    title="Hapus Menu"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              )}
             </div>
 
             {menu.category && (
@@ -87,7 +98,7 @@ export function MenuCard({ menu, onEdit, onDelete, onUpdatePortion }: MenuCardPr
             )}
           </div>
 
-          {/* Harga & Kontrol Porsi */}
+          {/* Harga & Status / Kontrol Porsi */}
           <div className="flex items-center justify-between mt-2 pt-1 border-t border-border/50">
             <span className="text-sm font-bold text-primary">
               {formatRupiah(menu.price)}
@@ -110,29 +121,31 @@ export function MenuCard({ menu, onEdit, onDelete, onUpdatePortion }: MenuCardPr
                 </Badge>
               )}
 
-              {/* Tombol Cepat Porsi +/- */}
-              <div className="flex items-center border border-border rounded-md overflow-hidden bg-background">
-                <button
-                  type="button"
-                  disabled={menu.remainingPortions <= 0}
-                  onClick={() => onUpdatePortion(menu.id, Math.max(0, menu.remainingPortions - 1))}
-                  className="px-1.5 py-0.5 hover:bg-muted text-muted-foreground disabled:opacity-30"
-                  title="Kurangi 1 porsi"
-                >
-                  <Minus className="h-3 w-3" />
-                </button>
-                <span className="text-xs font-semibold px-1 min-w-[20px] text-center">
-                  {menu.remainingPortions}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => onUpdatePortion(menu.id, menu.remainingPortions + 1)}
-                  className="px-1.5 py-0.5 hover:bg-muted text-muted-foreground"
-                  title="Tambah 1 porsi"
-                >
-                  <Plus className="h-3 w-3" />
-                </button>
-              </div>
+              {/* Tombol Cepat Porsi +/- untuk Pemilik */}
+              {isOwner && onUpdatePortion && (
+                <div className="flex items-center border border-border rounded-md overflow-hidden bg-background">
+                  <button
+                    type="button"
+                    disabled={menu.remainingPortions <= 0}
+                    onClick={() => onUpdatePortion(menu.id, Math.max(0, menu.remainingPortions - 1))}
+                    className="px-1.5 py-0.5 hover:bg-muted text-muted-foreground disabled:opacity-30"
+                    title="Kurangi 1 porsi"
+                  >
+                    <Minus className="h-3 w-3" />
+                  </button>
+                  <span className="text-xs font-semibold px-1 min-w-[20px] text-center">
+                    {menu.remainingPortions}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => onUpdatePortion(menu.id, menu.remainingPortions + 1)}
+                    className="px-1.5 py-0.5 hover:bg-muted text-muted-foreground"
+                    title="Tambah 1 porsi"
+                  >
+                    <Plus className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

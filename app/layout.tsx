@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
+import { AuthProvider } from "@/lib/auth-context";
 import { cn } from "@/lib/utils";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
@@ -30,7 +31,9 @@ export default function RootLayout({
       className={cn("antialiased", "font-sans", inter.variable)}
     >
       <body className="min-h-screen bg-background font-sans antialiased selection:bg-primary/20 selection:text-primary">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

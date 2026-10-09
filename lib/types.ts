@@ -55,6 +55,17 @@ export interface Order {
   updatedAt?: string | number;
 }
 
+export type UserRole = "pemilik" | "staf" | "pelanggan";
+
+export interface AppUser {
+  uid: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  avatarUrl?: string;
+  phoneNumber?: string;
+}
+
 export interface DailyReportSummary {
   date: string;
   totalOrders: number;
@@ -67,3 +78,4 @@ export interface DailyReportSummary {
     revenue: number;
   }[];
 }
+

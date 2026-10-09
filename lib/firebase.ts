@@ -1,5 +1,6 @@
-﻿import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps, getApp } from "firebase/app";
 import { initializeFirestore, getFirestore, Firestore } from "firebase/firestore";
+import { getAuth, Auth } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
@@ -19,20 +20,27 @@ export const isFirebaseConfigured = Boolean(
 
 let app: any = null;
 let db: Firestore | null = null;
+let auth: Auth | null = null;
 
 try {
   if (isFirebaseConfigured) {
     app = getApps().length > 0 ? getApp() : initializeApp(firebaseConfig);
     try {
+      // Use forceLongPolling to avoid 10s WebSocket timeout & network handshake delays
       db = initializeFirestore(app, {
-        experimentalAutoDetectLongPolling: true,
+        experimentalForceLongPolling: true,
       });
     } catch {
       db = getFirestore(app);
+    }
+    try {
+      auth = getAuth(app);
+    } catch (authErr) {
+      console.warn("Firebase auth initialization warning:", authErr);
     }
   }
 } catch (error) {
   console.warn("Firebase initialization warning:", error);
 }
 
-export { app, db };
+export { app, db, auth };

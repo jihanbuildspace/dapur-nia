@@ -7,9 +7,15 @@ import { MenuCard } from "./menu-card";
 import { MenuDialog } from "./menu-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, UtensilsCrossed, AlertCircle, RefreshCw } from "lucide-react";
+import { Plus, Search, UtensilsCrossed, AlertCircle, RefreshCw, Lock, Sparkles, ShieldCheck } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
-export function MenuList() {
+interface MenuListProps {
+  isOwnerMode?: boolean;
+  onRequireLogin?: () => void;
+}
+
+export function MenuList({ isOwnerMode = false, onRequireLogin }: MenuListProps) {
   const [menus, setMenus] = useState<MenuItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,16 +41,28 @@ export function MenuList() {
   }, []);
 
   const handleOpenAdd = () => {
+    if (!isOwnerMode && onRequireLogin) {
+      onRequireLogin();
+      return;
+    }
     setMenuToEdit(null);
     setDialogOpen(true);
   };
 
   const handleOpenEdit = (menu: MenuItem) => {
+    if (!isOwnerMode && onRequireLogin) {
+      onRequireLogin();
+      return;
+    }
     setMenuToEdit(menu);
     setDialogOpen(true);
   };
 
   const handleDelete = async (id: string) => {
+    if (!isOwnerMode && onRequireLogin) {
+      onRequireLogin();
+      return;
+    }
     if (!confirm("Apakah Anda yakin ingin menghapus menu ini?")) return;
     try {
       await deleteMenu(id);
@@ -55,6 +73,10 @@ export function MenuList() {
   };
 
   const handleUpdatePortion = async (id: string, newPortion: number) => {
+    if (!isOwnerMode && onRequireLogin) {
+      onRequireLogin();
+      return;
+    }
     try {
       await updateMenu(id, { remainingPortions: newPortion });
       setMenus((prev) =>
@@ -86,21 +108,65 @@ export function MenuList() {
 
   return (
     <div className="space-y-4 pb-20">
+      {/* Banner Mode / Status Bar */}
+      <div className="flex items-center justify-between gap-2 px-1">
+        <div className="flex items-center gap-1.5">
+          <h2 className="text-base font-bold tracking-tight text-foreground">
+            {isOwnerMode ? "Kelola Menu Katering" : "Daftar Menu Katering"}
+          </h2>
+          {isOwnerMode ? (
+            <Badge variant="secondary" className="bg-primary/15 text-primary text-[10px] gap-1 px-1.5 py-0 font-medium border-primary/20">
+              <ShieldCheck className="h-3 w-3" /> Mode Pemilik
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[10px] text-muted-foreground px-1.5 py-0">
+              Tamu
+            </Badge>
+          )}
+        </div>
+
+        {!isOwnerMode && onRequireLogin && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onRequireLogin}
+            className="h-7 text-xs text-primary hover:text-primary hover:bg-primary/10 px-2 font-medium"
+          >
+            <Lock className="h-3 w-3 mr-1" />
+            Kelola Menu
+          </Button>
+        )}
+      </div>
+
       {/* Header Aksi & Pencarian */}
       <div className="flex items-center justify-between gap-2">
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Cari menu..."
+            placeholder="Cari menu atau kategori..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="pl-8 text-sm h-9 bg-background"
           />
         </div>
-        <Button onClick={handleOpenAdd} size="sm" className="h-9 gap-1 font-medium">
-          <Plus className="h-4 w-4" />
-          <span>Tambah Menu</span>
-        </Button>
+        {isOwnerMode ? (
+          <Button onClick={handleOpenAdd} size="sm" className="h-9 gap-1 font-medium">
+            <Plus className="h-4 w-4" />
+            <span>Tambah Menu</span>
+          </Button>
+        ) : (
+          onRequireLogin && (
+            <Button
+              onClick={onRequireLogin}
+              variant="outline"
+              size="sm"
+              className="h-9 gap-1 text-xs border-primary/30 text-primary hover:bg-primary/10 font-medium"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Tambah Menu</span>
+            </Button>
+          )
+        )}
       </div>
 
       {/* Error State */}
@@ -145,12 +211,16 @@ export function MenuList() {
           <p className="mt-1 text-xs text-muted-foreground max-w-xs">
             {searchQuery
               ? `Tidak ada menu yang cocok dengan kata kunci "${searchQuery}".`
-              : "Mulai tambahkan menu katering harian dan tentukan sisa porsi yang tersedia."}
+              : "Belum ada daftar menu katering yang tersedia saat ini."}
           </p>
           {!searchQuery && (
-            <Button onClick={handleOpenAdd} size="sm" className="mt-4 gap-1">
+            <Button
+              onClick={handleOpenAdd}
+              size="sm"
+              className="mt-4 gap-1"
+            >
               <Plus className="h-4 w-4" />
-              <span>Tambah Menu Pertama</span>
+              <span>{isOwnerMode ? "Tambah Menu Pertama" : "Masuk & Tambah Menu"}</span>
             </Button>
           )}
         </div>
@@ -161,6 +231,7 @@ export function MenuList() {
             <MenuCard
               key={menu.id}
               menu={menu}
+              isOwner={isOwnerMode}
               onEdit={handleOpenEdit}
               onDelete={handleDelete}
               onUpdatePortion={handleUpdatePortion}
@@ -169,7 +240,7 @@ export function MenuList() {
         </div>
       )}
 
-      {/* Modal Dialog */}
+      {/* Modal Dialog (Hanya aktif saat pemilik/login) */}
       <MenuDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
@@ -179,3 +250,4 @@ export function MenuList() {
     </div>
   );
 }
+
